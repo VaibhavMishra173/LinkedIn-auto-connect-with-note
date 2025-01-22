@@ -40,10 +40,13 @@ Linkedin = {
     }
   },
   compile: function (data, config) {
-    var elements = document.querySelectorAll("button");
+    // Find connect buttons using the specific class and text content
+    var elements = document.querySelectorAll("button.artdeco-button--secondary");
     data.pageButtons = [...elements].filter(function (element) {
-      return element.textContent.trim() === "Connect";
+      return element.textContent.trim() === "Connect" &&
+             element.getAttribute("aria-label")?.includes("connect");
     });
+
     if (!data.pageButtons || data.pageButtons.length === 0) {
       console.warn("ERROR: no connect buttons found on page!");
       console.info("INFO: moving to next page...");
@@ -55,9 +58,6 @@ Linkedin = {
       console.info("INFO: " + data.pageButtonTotal + " connect buttons found");
       data.pageButtonIndex = 0;
       
-      // Enhanced logging for debugging
-      console.debug("DEBUG: Starting name extraction");
-      
       var names = document.getElementsByClassName("entity-result__title-line");
       console.debug("DEBUG: Found " + names.length + " title line elements");
       
@@ -65,23 +65,14 @@ Linkedin = {
         const hasConnect = element.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.textContent.includes(
           "Connect\n"
         );
-        console.debug("DEBUG: Checking element for Connect button:", hasConnect);
         return hasConnect;
       });
-      
-      console.debug("DEBUG: After filtering, found " + names.length + " names");
       
       data.connectNames = [...names].map(function (element) {
         const fullName = element.innerText;
         const firstName = fullName.split(" ")[0];
-        console.debug("DEBUG: Extracted name:", firstName);
         return firstName;
       });
-      
-      console.debug("DEBUG: Final names array:", data.connectNames);
-      console.debug(
-        "DEBUG: starting to send invites in " + config.actionDelay + " ms"
-      );
       
       setTimeout(() => {
         this.sendInvites(data, config);
@@ -89,7 +80,6 @@ Linkedin = {
     }
   },
   sendInvites: function (data, config) {
-    console.debug("remaining requests " + config.maxRequests);
     if (config.maxRequests == 0) {
       console.info("INFO: max requests reached for the script run!");
       this.complete(config);
@@ -102,82 +92,76 @@ Linkedin = {
       );
       var button = data.pageButtons[data.pageButtonIndex];
       button.click();
-      if (config.addNote && config.note) {
-        console.debug(
-          "DEBUG: clicking Add a note in popup, if present, in " +
-            config.actionDelay +
-            " ms"
-        );
-        setTimeout(() => this.clickAddNote(data, config), config.actionDelay);
-      } else {
-        console.debug(
-          "DEBUG: clicking done in popup, if present, in " +
-            config.actionDelay +
-            " ms"
-        );
-        setTimeout(() => this.clickDone(data, config), config.actionDelay);
-      }
+      
+      setTimeout(() => {
+        if (config.addNote) {
+          // Find and click "Add a note" button
+          var addNoteButton = document.querySelector('button[aria-label="Add a note"]');
+          if (addNoteButton) {
+            console.debug("DEBUG: Clicking Add a note button");
+            addNoteButton.click();
+            setTimeout(() => this.pasteNote(data, config), config.actionDelay);
+          } else {
+            console.debug("DEBUG: Add note button not found, trying send without note");
+            this.clickSendWithoutNote(data, config);
+          }
+        } else {
+          // Click "Send without a note" button
+          this.clickSendWithoutNote(data, config);
+        }
+      }, config.actionDelay);
     }
   },
-  clickAddNote: function (data, config) {
-    var buttons = document.querySelectorAll("button");
-    var addNoteButton = Array.prototype.filter.call(buttons, function (el) {
-      return el.textContent.trim() === "Add a note";
-    });
-    if (addNoteButton && addNoteButton[0]) {
-      console.debug("DEBUG: clicking add a note button to paste note");
-      addNoteButton[0].click();
-      console.debug("DEBUG: pasting note in " + config.actionDelay);
-      setTimeout(() => this.pasteNote(data, config), config.actionDelay);
+  clickSendWithoutNote: function(data, config) {
+    var sendWithoutNoteButton = document.querySelector('button[aria-label="Send without a note"]');
+    if (sendWithoutNoteButton) {
+      console.debug("DEBUG: Clicking Send without note button");
+      sendWithoutNoteButton.click();
+      setTimeout(() => this.handlePostSend(data, config), config.actionDelay);
     } else {
-      console.debug(
-        "DEBUG: add note button not found, clicking send on the popup in " +
-          config.actionDelay
-      );
-      setTimeout(() => this.clickDone(data, config), config.actionDelay);
+      console.warn("WARN: Send without note button not found");
+      this.handlePostSend(data, config);
     }
   },
   pasteNote: function (data, config) {
-    noteTextBox = document.getElementById("custom-message");
-    noteTextBox.value = config.note.replace(
-      "{{name}}",
-      data.connectNames[data.pageButtonIndex]
-    );
-    noteTextBox.dispatchEvent(
-      new Event("input", {
-        bubbles: true,
-      })
-    );
-    console.debug(
-      "DEBUG: clicking send in popup, if present, in " +
-        config.actionDelay +
-        " ms"
-    );
-    setTimeout(() => this.clickDone(data, config), config.actionDelay);
-  },
-  clickDone: function (data, config) {
-    var buttons = document.querySelectorAll("button");
-    var doneButton = Array.prototype.filter.call(buttons, function (el) {
-      return el.textContent.trim() === "Send";
-    });
-    if (doneButton && doneButton[0]) {
-      console.debug("DEBUG: clicking send button to close popup");
-      doneButton[0].click();
-    } else {
-      console.debug(
-        "DEBUG: send button not found, clicking close on the popup in " +
-          config.actionDelay
+    var noteTextBox = document.getElementById("custom-message");
+    if (noteTextBox) {
+      noteTextBox.value = config.note.replace(
+        "{{name}}",
+        data.connectNames[data.pageButtonIndex]
       );
+      noteTextBox.dispatchEvent(
+        new Event("input", {
+          bubbles: true,
+        })
+      );
+      
+      // Find and click the Send button
+      setTimeout(() => {
+        var sendButton = document.querySelector('button[aria-label="Send now"]');
+        if (sendButton) {
+          console.debug("DEBUG: Clicking Send now button");
+          sendButton.click();
+          setTimeout(() => this.handlePostSend(data, config), config.actionDelay);
+        } else {
+          console.warn("WARN: Send now button not found");
+          this.handlePostSend(data, config);
+        }
+      }, config.actionDelay);
+    } else {
+      console.warn("WARN: Note textbox not found");
+      this.handlePostSend(data, config);
     }
-    setTimeout(() => this.clickClose(data, config), config.actionDelay);
   },
-  clickClose: function (data, config) {
+  handlePostSend: function (data, config) {
+    // Try to close any remaining modal
     var closeButton = document.getElementsByClassName(
       "artdeco-modal__dismiss artdeco-button artdeco-button--circle artdeco-button--muted artdeco-button--2 artdeco-button--tertiary ember-view"
     );
     if (closeButton && closeButton[0]) {
       closeButton[0].click();
     }
+    
     console.info(
       "INFO: invite sent to " +
         (data.pageButtonIndex + 1) +
@@ -186,18 +170,12 @@ Linkedin = {
     );
     config.maxRequests--;
     config.totalRequestsSent++;
+    
     if (data.pageButtonIndex === data.pageButtonTotal - 1) {
-      console.debug(
-        "DEBUG: all connections for the page done, going to next page in " +
-          config.actionDelay +
-          " ms"
-      );
+      console.debug("DEBUG: all connections for the page done, going to next page");
       setTimeout(() => this.nextPage(config), config.actionDelay);
     } else {
       data.pageButtonIndex++;
-      console.debug(
-        "DEBUG: sending next invite in " + config.actionDelay + " ms"
-      );
       setTimeout(() => this.sendInvites(data, config), config.actionDelay);
     }
   },
