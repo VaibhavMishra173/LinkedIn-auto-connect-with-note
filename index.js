@@ -6,9 +6,9 @@ Linkedin = {
     // set to -1 for no limit
     maxRequests: -1,
     totalRequestsSent: 0,
-    // set to false to skip adding note in invites
-    addNote: true,
-    note: "Hey {{name}}, I’m eager to contribute my skills in the team. I’d love the opportunity to connect and learn more about potential openings.",
+    // setting this to false to skip adding note in invites, and send connection request without note
+    addNote: false,
+    note: "Hey {{name}}, I'm eager to contribute my skills in the team. I'd love the opportunity to connect and learn more about potential openings.",
   },
   init: function (data, config) {
     console.info("INFO: script initialized on the page...");
@@ -54,18 +54,35 @@ Linkedin = {
       data.pageButtonTotal = data.pageButtons.length;
       console.info("INFO: " + data.pageButtonTotal + " connect buttons found");
       data.pageButtonIndex = 0;
+      
+      // Enhanced logging for debugging
+      console.debug("DEBUG: Starting name extraction");
+      
       var names = document.getElementsByClassName("entity-result__title-line");
+      console.debug("DEBUG: Found " + names.length + " title line elements");
+      
       names = [...names].filter(function (element) {
-        return element.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.textContent.includes(
+        const hasConnect = element.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.textContent.includes(
           "Connect\n"
         );
+        console.debug("DEBUG: Checking element for Connect button:", hasConnect);
+        return hasConnect;
       });
+      
+      console.debug("DEBUG: After filtering, found " + names.length + " names");
+      
       data.connectNames = [...names].map(function (element) {
-        return element.innerText.split(" ")[0];
+        const fullName = element.innerText;
+        const firstName = fullName.split(" ")[0];
+        console.debug("DEBUG: Extracted name:", firstName);
+        return firstName;
       });
+      
+      console.debug("DEBUG: Final names array:", data.connectNames);
       console.debug(
         "DEBUG: starting to send invites in " + config.actionDelay + " ms"
       );
+      
       setTimeout(() => {
         this.sendInvites(data, config);
       }, config.actionDelay);
@@ -107,7 +124,6 @@ Linkedin = {
     var addNoteButton = Array.prototype.filter.call(buttons, function (el) {
       return el.textContent.trim() === "Add a note";
     });
-    // adding note if required
     if (addNoteButton && addNoteButton[0]) {
       console.debug("DEBUG: clicking add a note button to paste note");
       addNoteButton[0].click();
@@ -144,7 +160,6 @@ Linkedin = {
     var doneButton = Array.prototype.filter.call(buttons, function (el) {
       return el.textContent.trim() === "Send";
     });
-    // Click the first send button
     if (doneButton && doneButton[0]) {
       console.debug("DEBUG: clicking send button to close popup");
       doneButton[0].click();
